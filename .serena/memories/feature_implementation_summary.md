@@ -37,8 +37,11 @@
 ### 7. Wake on Motion (WoM)
 - Hardware-based motion detection via interrupt
 - Requires interrupt pin configuration
-- Configurable threshold (1-255 mg)
+- Configurable threshold (1-255 mg, default 100)
+- Configurable interrupt pin (INT1 or INT2)
 - Platform: `binary_sensor` with `wom:` sub-config
+- **Trade-offs**: Gyroscope disabled and accelerometer in low-power mode per datasheet. Orientation detection and software motion sensor/trigger won't work reliably.
+- **Best for**: Low-power/deep-sleep scenarios where IMU interrupt wakes the MCU
 
 ### 8. Low-Pass Filter (LPF) Configuration
 - Hardware-based noise filtering in CTRL5 register
@@ -46,6 +49,17 @@
 - Default: 2.66% (most aggressive smoothing)
 - Separate for accel and gyro: `accel_lpf`, `gyro_lpf`
 - At 500Hz ODR with 2.66%, cutoff is ~13Hz
+
+### 9. Automation Triggers
+- **on_motion**: Fires automation when motion is detected (leading edge only)
+  - Configurable threshold (0.1-10.0 m/s² deviation, default 0.5)
+  - Works without binary_sensor platform
+  - YAML: `on_motion:` with `threshold:` and `then:` actions
+- **on_orientation_change**: Fires automation when orientation changes
+  - Passes `orientation` string variable to automation
+  - Values: face_up, face_down, portrait, portrait_inverted, landscape_left, landscape_right, unknown
+  - Works without text_sensor platform
+  - YAML: `on_orientation_change:` with `then:` actions
 
 
 ## Files Modified/Created

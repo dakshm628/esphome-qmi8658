@@ -283,6 +283,93 @@ void QMI8658Component::dump_config() {
   LOG_SENSOR("  ", "Temperature", this->temperature_sensor_);
   LOG_SENSOR("  ", "Pitch", this->pitch_sensor_);
   LOG_SENSOR("  ", "Roll", this->roll_sensor_);
+
+  // Log automation trigger configuration
+  if (this->motion_detection_enabled_) {
+    ESP_LOGCONFIG(TAG, "  Motion Trigger: threshold=%.2f m/s²", this->motion_threshold_);
+  }
+  if (this->orientation_detection_enabled_) {
+    ESP_LOGCONFIG(TAG, "  Orientation Change Trigger: enabled");
+  }
+}
+
+void QMI8658Component::add_on_motion_callback(std::function<void()> &&callback) {
+  this->on_motion_callbacks_.add(std::move(callback));
+}
+
+void QMI8658Component::add_on_orientation_change_callback(
+    std::function<void(const std::string &)> &&callback) {
+  this->on_orientation_change_callbacks_.add(std::move(callback));
+}
+
+void QMI8658Component::set_motion_threshold(float threshold) {
+  this->motion_threshold_ = threshold;
+  this->motion_detection_enabled_ = true;
+}
+
+void QMI8658Component::set_orientation_detection_enabled(bool enabled) {
+  this->orientation_detection_enabled_ = enabled;
+}
+
+void QMI8658Component::loop() {
+  // Motion detection for automation triggers (if enabled via on_motion)
+  if (this->motion_detection_enabled_) {
+    float ax = this->last_accel_x_;
+    float ay = this->last_accel_y_;
+    float az = this->last_accel_z_;
+
+    // Calculate magnitude of acceleration vector
+    float magnitude = std::sqrt(ax * ax + ay * ay + az * az);
+
+    // Calculate deviation from expected gravity
+    float deviation = std::abs(magnitude - GRAVITY_EARTH);
+
+    // Motion detected if deviation exceeds threshold
+    bool motion = deviation > this->motion_threshold_;
+
+    // Only fire callback on leading edge (transition to motion)
+    if (motion && !this->last_motion_state_) {
+      ESP_LOGD(TAG, "Motion trigger: magnitude=%.2f m/s², deviation=%.2f, threshold=%.2f",
+               magnitude, deviation, this->motion_threshold_);
+      this->on_motion_callbacks_.call();
+    }
+    this->last_motion_state_ = motion;
+  }
+
+  // Orientation detection for automation triggers (if enabled via on_orientation_change)
+  if (this->orientation_detection_enabled_) {
+    float ax = this->last_accel_x_;
+    float ay = this->last_accel_y_;
+    float az = this->last_accel_z_;
+
+    // Determine orientation based on which axis has the dominant gravity component
+    std::string orientation;
+
+    if (az > ORIENTATION_THRESHOLD) {
+      orientation = "face_up";
+    } else if (az < -ORIENTATION_THRESHOLD) {
+      orientation = "face_down";
+    } else if (ax > ORIENTATION_THRESHOLD) {
+      orientation = "portrait";
+    } else if (ax < -ORIENTATION_THRESHOLD) {
+      orientation = "portrait_inverted";
+    } else if (ay > ORIENTATION_THRESHOLD) {
+      orientation = "landscape_right";
+    } else if (ay < -ORIENTATION_THRESHOLD) {
+      orientation = "landscape_left";
+    } else {
+      orientation = "unknown";
+    }
+
+    // Only fire callback on orientation change
+    if (orientation != this->last_orientation_) {
+      ESP_LOGD(TAG, "Orientation trigger: %s -> %s",
+               this->last_orientation_.empty() ? "(initial)" : this->last_orientation_.c_str(),
+               orientation.c_str());
+      this->last_orientation_ = orientation;
+      this->on_orientation_change_callbacks_.call(orientation);
+    }
+  }
 }
 
 // Motion Binary Sensor implementation

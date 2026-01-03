@@ -1,7 +1,8 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome import automation
 from esphome.components import i2c
-from esphome.const import CONF_ID
+from esphome.const import CONF_ID, CONF_TRIGGER_ID, CONF_THRESHOLD
 
 CODEOWNERS = ["@Djelibeybi"]
 DEPENDENCIES = ["i2c"]
@@ -71,6 +72,16 @@ LPF_MODE = {
     "13.37%": LPFMode.LPF_13_37PCT,
 }
 
+# Automation trigger constants
+CONF_ON_MOTION = "on_motion"
+CONF_ON_ORIENTATION_CHANGE = "on_orientation_change"
+
+# Trigger classes for automations
+OnMotionTrigger = qmi8658_ns.class_("OnMotionTrigger", automation.Trigger.template())
+OnOrientationChangeTrigger = qmi8658_ns.class_(
+    "OnOrientationChangeTrigger", automation.Trigger.template(cg.std_string)
+)
+
 CONF_ACCEL_RANGE = "accel_range"
 CONF_GYRO_RANGE = "gyro_range"
 CONF_ACCEL_ODR = "accel_odr"
@@ -88,6 +99,18 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_GYRO_ODR, default="500HZ"): cv.enum(GYRO_ODR, upper=True),
             cv.Optional(CONF_ACCEL_LPF, default="2.66%"): cv.enum(LPF_MODE, upper=True),
             cv.Optional(CONF_GYRO_LPF, default="2.66%"): cv.enum(LPF_MODE, upper=True),
+            # Automation triggers
+            cv.Optional(CONF_ON_MOTION): automation.validate_automation(
+                {
+                    cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(OnMotionTrigger),
+                    cv.Optional(CONF_THRESHOLD, default=0.5): cv.float_range(min=0.1, max=10.0),
+                }
+            ),
+            cv.Optional(CONF_ON_ORIENTATION_CHANGE): automation.validate_automation(
+                {
+                    cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(OnOrientationChangeTrigger),
+                }
+            ),
         }
     )
     .extend(cv.polling_component_schema("60s"))
@@ -106,3 +129,15 @@ async def to_code(config):
     cg.add(var.set_gyro_odr(config[CONF_GYRO_ODR]))
     cg.add(var.set_accel_lpf(config[CONF_ACCEL_LPF]))
     cg.add(var.set_gyro_lpf(config[CONF_GYRO_LPF]))
+
+    # Handle on_motion automation triggers
+    for conf in config.get(CONF_ON_MOTION, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [], conf)
+        cg.add(var.set_motion_threshold(conf[CONF_THRESHOLD]))
+
+    # Handle on_orientation_change automation triggers
+    for conf in config.get(CONF_ON_ORIENTATION_CHANGE, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [(cg.std_string, "orientation")], conf)
+        cg.add(var.set_orientation_detection_enabled(True))

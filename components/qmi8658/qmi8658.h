@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/core/automation.h"
 #include "esphome/core/gpio.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -13,7 +14,7 @@ namespace esphome {
 namespace qmi8658 {
 
 /// Component version - increment this when making changes for testing
-static const char *const QMI8658_VERSION = "1.0.7";
+static const char *const QMI8658_VERSION = "1.0.8";
 
 /// QMI8658C Register Addresses
 static const uint8_t QMI8658_REG_WHO_AM_I = 0x00;
@@ -108,6 +109,7 @@ class QMI8658Component : public PollingComponent, public i2c::I2CDevice {
  public:
   void setup() override;
   void update() override;
+  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
@@ -134,6 +136,14 @@ class QMI8658Component : public PollingComponent, public i2c::I2CDevice {
   float get_accel_x() const { return last_accel_x_; }
   float get_accel_y() const { return last_accel_y_; }
   float get_accel_z() const { return last_accel_z_; }
+
+  // Callback registration for automation triggers
+  void add_on_motion_callback(std::function<void()> &&callback);
+  void add_on_orientation_change_callback(std::function<void(const std::string &)> &&callback);
+
+  // Configuration setters for automation triggers
+  void set_motion_threshold(float threshold);
+  void set_orientation_detection_enabled(bool enabled);
 
  protected:
   // Sensor pointers
@@ -163,6 +173,23 @@ class QMI8658Component : public PollingComponent, public i2c::I2CDevice {
   float last_accel_x_{0.0f};
   float last_accel_y_{0.0f};
   float last_accel_z_{0.0f};
+
+  // Trigger callback managers
+  CallbackManager<void()> on_motion_callbacks_;
+  CallbackManager<void(const std::string &)> on_orientation_change_callbacks_;
+
+  // Motion detection state for triggers
+  float motion_threshold_{0.0f};
+  bool motion_detection_enabled_{false};
+  bool last_motion_state_{false};
+
+  // Orientation detection state for triggers
+  bool orientation_detection_enabled_{false};
+  std::string last_orientation_{""};
+
+  // Constants for detection (shared with sensor classes)
+  static constexpr float GRAVITY_EARTH = 9.80665f;
+  static constexpr float ORIENTATION_THRESHOLD = 7.0f;
 
   // Helper methods
   float get_accel_sensitivity_for_range_(AccelScale range);
@@ -228,6 +255,23 @@ class QMI8658WoMBinarySensor : public binary_sensor::BinarySensor, public Compon
   volatile bool interrupt_triggered_{false};
 
   static constexpr uint32_t MOTION_HOLD_TIME_MS = 500;  ///< Hold motion state for 500ms
+};
+
+/// Trigger for motion detection events (fires on leading edge only)
+class OnMotionTrigger : public Trigger<> {
+ public:
+  explicit OnMotionTrigger(QMI8658Component *parent) {
+    parent->add_on_motion_callback([this]() { this->trigger(); });
+  }
+};
+
+/// Trigger for orientation change events (passes orientation string)
+class OnOrientationChangeTrigger : public Trigger<std::string> {
+ public:
+  explicit OnOrientationChangeTrigger(QMI8658Component *parent) {
+    parent->add_on_orientation_change_callback(
+        [this](const std::string &orientation) { this->trigger(orientation); });
+  }
 };
 
 }  // namespace qmi8658

@@ -57,6 +57,22 @@ qmi8658:
   accel_lpf: 2.66%       # Options: DISABLED, 2.66%, 3.63%, 5.39%, 13.37% (default: 2.66%)
   gyro_lpf: 2.66%        # Options: DISABLED, 2.66%, 3.63%, 5.39%, 13.37% (default: 2.66%)
 
+  # Automation triggers - fire automations without needing sensor platforms
+  # on_motion: fires once when motion starts (leading edge only)
+  on_motion:
+    threshold: 0.5  # m/s² deviation from gravity (default: 0.5, range: 0.1-10.0)
+    then:
+      - logger.log: "Motion detected via on_motion trigger!"
+
+  # on_orientation_change: fires when device orientation changes
+  # The 'orientation' variable contains the new orientation string:
+  # face_up, face_down, portrait, portrait_inverted, landscape_left, landscape_right, unknown
+  on_orientation_change:
+    then:
+      - logger.log:
+          format: "Orientation changed to: %s"
+          args: ['orientation.c_str()']
+
 # QMI8658C sensor platform - references the component above
 # NOTE: At 100ms update_interval, raw sensor data can overwhelm Home Assistant's
 # recorder. Use filters or internal: true to reduce logging overhead.
